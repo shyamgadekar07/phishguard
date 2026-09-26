@@ -26,7 +26,25 @@ const seedAdmin = async () => {
     });
 
     if (existingAdmin) {
-      console.log(`[Seed Admin] Admin account already exists (${existingAdmin.email} - role: ${existingAdmin.role}). Seed not needed.`);
+      console.log(
+        `[Seed Admin] Admin account exists (${existingAdmin.email} - role: ${existingAdmin.role}).`
+      );
+
+      // Synchronize admin configuration from environment variables.
+      existingAdmin.name = adminName;
+      existingAdmin.email = adminEmail;
+      existingAdmin.password = adminPassword;
+      existingAdmin.role = 'ADMIN';
+      existingAdmin.department = 'Cybersecurity Operations';
+      existingAdmin.isActive = true;
+      existingAdmin.riskScore = 0;
+      existingAdmin.riskLevel = 'LOW';
+
+      // User model pre-save hook will hash the new password.
+      await existingAdmin.save();
+
+      console.log('[Seed Admin] Existing admin account synchronized successfully.');
+
       await mongoose.connection.close();
       process.exit(0);
     }

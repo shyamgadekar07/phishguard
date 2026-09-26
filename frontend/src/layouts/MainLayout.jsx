@@ -6,6 +6,7 @@ const MainLayout = () => {
   const navigate = useNavigate();
   const token = authService.getToken();
   const user = authService.getStoredUser();
+  const isSecurityStaff = user?.role === 'ADMIN' || user?.role === 'SECURITY_OFFICER';
 
   const handleLogout = () => {
     authService.logout();
@@ -24,8 +25,8 @@ const MainLayout = () => {
               </div>
               <div>
                 <span className="text-xl font-bold tracking-tight text-white">PhishGuard</span>
-                <span className="hidden sm:inline-block ml-2 text-xs bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded-full font-medium">
-                  Phase 2: Auth Active
+                <span className="hidden sm:inline-block ml-2 text-xs bg-indigo-950 text-indigo-400 border border-indigo-800 px-2 py-0.5 rounded-full font-medium">
+                  Phase 3: Simulation Engine
                 </span>
               </div>
             </Link>
@@ -43,13 +44,32 @@ const MainLayout = () => {
               <>
                 <Link
                   to="/dashboard"
-                  className="text-blue-400 hover:text-blue-300 px-3 py-1.5 rounded-md hover:bg-slate-800 transition-colors"
+                  className="text-slate-300 hover:text-white px-3 py-1.5 rounded-md hover:bg-slate-800 transition-colors"
                 >
                   Dashboard
                 </Link>
-                <span className="text-xs text-slate-500 hidden md:inline">
-                  ({user?.name || 'User'})
+
+                {isSecurityStaff && (
+                  <>
+                    <Link
+                      to="/templates"
+                      className="text-slate-300 hover:text-white px-3 py-1.5 rounded-md hover:bg-slate-800 transition-colors"
+                    >
+                      Templates
+                    </Link>
+                    <Link
+                      to="/campaigns"
+                      className="text-blue-400 hover:text-blue-300 px-3 py-1.5 rounded-md hover:bg-slate-800 transition-colors"
+                    >
+                      Campaigns
+                    </Link>
+                  </>
+                )}
+
+                <span className="text-xs text-slate-500 hidden lg:inline">
+                  {user?.name} ({user?.role})
                 </span>
+
                 <button
                   onClick={handleLogout}
                   className="text-xs px-3 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 transition"

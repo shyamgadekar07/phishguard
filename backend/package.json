@@ -8,7 +8,8 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "seed:admin": "node src/scripts/seedAdmin.js",
-    "test:auth": "node src/scripts/testAuth.js"
+    "test:auth": "node src/scripts/testAuth.js",
+    "test:phase3": "node src/scripts/testPhase3.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
