@@ -1,0 +1,5 @@
+/**
+ * Mongoose models directory.
+ * (Will be populated in upcoming phases)
+ */
+export {};

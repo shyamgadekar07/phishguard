@@ -1,0 +1,5 @@
+/**
+ * Controller directory for handling incoming requests and crafting API responses.
+ * (Will be populated in upcoming phases)
+ */
+export {};
