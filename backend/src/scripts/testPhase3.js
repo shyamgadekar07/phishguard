@@ -1,3 +1,5 @@
+import path from 'path';
+import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import app from '../app.js';
@@ -8,7 +10,9 @@ import Campaign from '../models/Campaign.js';
 import SimulationEvent from '../models/SimulationEvent.js';
 import generateToken from '../utils/generateToken.js';
 
-dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const TEST_PORT = 5098;
 const BASE_URL = `http://localhost:${TEST_PORT}`;
@@ -52,44 +56,63 @@ const runPhase3Tests = async () => {
 
     // --- SETUP TEST USERS ---
     console.log('[Setup] Preparing test users...');
-    const adminUser = await User.findOneAndUpdate(
-      { email: 'admin@phishguard.local' },
-      {
-        name: 'Admin User',
-        email: 'admin@phishguard.local',
-        password: 'AdminPassword123!',
+    const adminEmail = (process.env.ADMIN_EMAIL || 'admin@phishguard.local').trim().toLowerCase();
+    const adminPassword = process.env.ADMIN_PASSWORD || 'Admin@12345';
+
+    let adminUser = await User.findOne({ email: adminEmail });
+    if (!adminUser) {
+      adminUser = await User.create({
+        name: process.env.ADMIN_NAME || 'Admin User',
+        email: adminEmail,
+        password: adminPassword,
         role: 'ADMIN',
         isActive: true,
-      },
-      { upsert: true, new: true }
-    );
+      });
+    } else {
+      adminUser.name = process.env.ADMIN_NAME || 'Admin User';
+      adminUser.password = adminPassword;
+      adminUser.role = 'ADMIN';
+      adminUser.isActive = true;
+      await adminUser.save();
+    }
     adminToken = generateToken(adminUser._id, 'ADMIN');
 
-    const officerUser = await User.findOneAndUpdate(
-      { email: 'officer@phishguard.local' },
-      {
+    let officerUser = await User.findOne({ email: 'officer@phishguard.local' });
+    if (!officerUser) {
+      officerUser = await User.create({
         name: 'Security Officer',
         email: 'officer@phishguard.local',
         password: 'OfficerPassword123!',
         role: 'SECURITY_OFFICER',
         isActive: true,
-      },
-      { upsert: true, new: true }
-    );
+      });
+    } else {
+      officerUser.name = 'Security Officer';
+      officerUser.password = 'OfficerPassword123!';
+      officerUser.role = 'SECURITY_OFFICER';
+      officerUser.isActive = true;
+      await officerUser.save();
+    }
     officerToken = generateToken(officerUser._id, 'SECURITY_OFFICER');
 
-    const traineeUser = await User.findOneAndUpdate(
-      { email: 'trainee_phase3@example.com' },
-      {
+    let traineeUser = await User.findOne({ email: 'trainee_phase3@example.com' });
+    if (!traineeUser) {
+      traineeUser = await User.create({
         name: 'Target Trainee',
         email: 'trainee_phase3@example.com',
         password: 'TraineePassword123!',
         role: 'TRAINEE',
         department: 'Operations',
         isActive: true,
-      },
-      { upsert: true, new: true }
-    );
+      });
+    } else {
+      traineeUser.name = 'Target Trainee';
+      traineeUser.password = 'TraineePassword123!';
+      traineeUser.role = 'TRAINEE';
+      traineeUser.department = 'Operations';
+      traineeUser.isActive = true;
+      await traineeUser.save();
+    }
     traineeToken = generateToken(traineeUser._id, 'TRAINEE');
     targetUserId = traineeUser._id.toString();
 

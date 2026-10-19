@@ -26,7 +26,7 @@ const MainLayout = () => {
               <div>
                 <span className="text-xl font-bold tracking-tight text-white">PhishGuard</span>
                 <span className="hidden sm:inline-block ml-2 text-xs bg-indigo-950 text-indigo-400 border border-indigo-800 px-2 py-0.5 rounded-full font-medium">
-                  Phase 3: Simulation Engine
+                  Phase 4: Behavioral Analytics
                 </span>
               </div>
             </Link>
@@ -59,9 +59,15 @@ const MainLayout = () => {
                     </Link>
                     <Link
                       to="/campaigns"
-                      className="text-blue-400 hover:text-blue-300 px-3 py-1.5 rounded-md hover:bg-slate-800 transition-colors"
+                      className="text-slate-300 hover:text-white px-3 py-1.5 rounded-md hover:bg-slate-800 transition-colors"
                     >
                       Campaigns
+                    </Link>
+                    <Link
+                      to="/analytics"
+                      className="text-blue-400 hover:text-blue-300 px-3 py-1.5 rounded-md hover:bg-slate-800 transition-colors"
+                    >
+                      Analytics
                     </Link>
                   </>
                 )}

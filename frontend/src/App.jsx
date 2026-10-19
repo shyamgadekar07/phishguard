@@ -7,6 +7,7 @@ import RegisterPage from './pages/RegisterPage.jsx';
 import DashboardPage from './pages/DashboardPage.jsx';
 import TemplatesPage from './pages/TemplatesPage.jsx';
 import CampaignsPage from './pages/CampaignsPage.jsx';
+import AnalyticsPage from './pages/AnalyticsPage.jsx';
 import SimulationPage from './pages/SimulationPage.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 
@@ -43,6 +44,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <CampaignsPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="analytics"
+            element={
+              <ProtectedRoute>
+                <AnalyticsPage />
               </ProtectedRoute>
             }
           />

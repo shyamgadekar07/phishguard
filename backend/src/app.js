@@ -5,6 +5,7 @@ import authRoutes from './routes/auth.routes.js';
 import templateRoutes from './routes/template.routes.js';
 import campaignRoutes from './routes/campaign.routes.js';
 import simulationRoutes from './routes/simulation.routes.js';
+import analyticsRoutes from './routes/analytics.routes.js';
 import { notFoundHandler, errorHandler } from './middlewares/errorHandler.js';
 
 const app = express();
@@ -24,6 +25,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/templates', templateRoutes);
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/simulation', simulationRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 // Error Handling Middlewares
 app.use(notFoundHandler);

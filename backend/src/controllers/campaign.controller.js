@@ -117,6 +117,15 @@ export const createCampaign = async (req, res, next) => {
           message: `Target user ${inactiveUser.email} is inactive and cannot be enrolled in campaigns`,
         });
       }
+
+      // Check all target users have TRAINEE role
+      const nonTraineeUser = foundUsers.find((u) => u.role !== 'TRAINEE');
+      if (nonTraineeUser) {
+        return res.status(400).json({
+          success: false,
+          message: `Target user ${nonTraineeUser.email} is not a TRAINEE and cannot be enrolled in campaigns`,
+        });
+      }
     }
 
     // 6. Validate status
@@ -129,6 +138,14 @@ export const createCampaign = async (req, res, next) => {
           message: `Invalid status. Valid values: ${VALID_CAMPAIGN_STATUSES.join(', ')}`,
         });
       }
+
+      if (normStatus === 'RUNNING' && targetUserIds.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Campaign must have at least one target trainee before launch.',
+        });
+      }
+
       initialStatus = normStatus;
     }
 
@@ -260,6 +277,36 @@ export const updateCampaign = async (req, res, next) => {
           });
         }
       }
+
+      if (targets.length > 0) {
+        const foundUsers = await User.find({
+          _id: { $in: targets },
+        });
+
+        if (foundUsers.length !== targets.length) {
+          return res.status(400).json({
+            success: false,
+            message: 'One or more target users could not be found in the database',
+          });
+        }
+
+        const inactiveUser = foundUsers.find((u) => !u.isActive);
+        if (inactiveUser) {
+          return res.status(400).json({
+            success: false,
+            message: `Target user ${inactiveUser.email} is inactive and cannot be enrolled in campaigns`,
+          });
+        }
+
+        const nonTraineeUser = foundUsers.find((u) => u.role !== 'TRAINEE');
+        if (nonTraineeUser) {
+          return res.status(400).json({
+            success: false,
+            message: `Target user ${nonTraineeUser.email} is not a TRAINEE and cannot be enrolled in campaigns`,
+          });
+        }
+      }
+
       campaign.targets = targets;
     }
 

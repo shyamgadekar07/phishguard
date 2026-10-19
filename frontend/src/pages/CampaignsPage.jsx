@@ -16,6 +16,12 @@ const CampaignsPage = () => {
   // Status Filter
   const [statusFilter, setStatusFilter] = useState('');
 
+  // Trainee Directory State
+  const [trainees, setTrainees] = useState([]);
+  const [loadingTrainees, setLoadingTrainees] = useState(false);
+  const [traineesError, setTraineesError] = useState('');
+  const [traineeSearch, setTraineeSearch] = useState('');
+
   // Create Campaign Modal
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [formData, setFormData] = useState({
@@ -24,8 +30,15 @@ const CampaignsPage = () => {
     template: '',
     channel: 'EMAIL',
     status: 'DRAFT',
+    targets: [],
   });
   const [submitting, setSubmitting] = useState(false);
+
+  // Edit Targets Modal (for DRAFT campaigns)
+  const [editingCampaign, setEditingCampaign] = useState(null);
+  const [editTargets, setEditTargets] = useState([]);
+  const [savingTargets, setSavingTargets] = useState(false);
+  const [editTraineeSearch, setEditTraineeSearch] = useState('');
 
   // Metrics Modal
   const [selectedMetrics, setSelectedMetrics] = useState(null);
@@ -54,8 +67,8 @@ const CampaignsPage = () => {
       if (res.data?.templates?.length > 0) {
         setFormData((prev) => ({
           ...prev,
-          template: res.data.templates[0]._id,
-          channel: res.data.templates[0].channel,
+          template: prev.template || res.data.templates[0]._id,
+          channel: prev.template ? prev.channel : res.data.templates[0].channel,
         }));
       }
     } catch (err) {
@@ -63,9 +76,36 @@ const CampaignsPage = () => {
     }
   };
 
+  const fetchTrainees = async () => {
+    if (!canManage) return;
+    setLoadingTrainees(true);
+    setTraineesError('');
+    try {
+      const res = await campaignService.getTrainees();
+      const rawTrainees = res.data?.trainees || [];
+      // Show only active users with the TRAINEE role
+      const activeTrainees = rawTrainees.filter(
+        (t) => t.isActive !== false && (!t.role || t.role === 'TRAINEE')
+      );
+      setTrainees(activeTrainees);
+    } catch (err) {
+      console.error('Failed to load active trainees:', err);
+      if (err.response?.status === 403) {
+        setTraineesError('Forbidden: Only administrators and security officers can list and assign trainees.');
+      } else if (err.response?.status === 401) {
+        setTraineesError('Unauthorized: Please log in to view and assign trainees.');
+      } else {
+        setTraineesError(err.response?.data?.message || 'Failed to load trainee directory.');
+      }
+    } finally {
+      setLoadingTrainees(false);
+    }
+  };
+
   useEffect(() => {
     fetchCampaigns();
     fetchTemplates();
+    fetchTrainees();
   }, [statusFilter]);
 
   const handleTemplateSelection = (e) => {
@@ -78,6 +118,62 @@ const CampaignsPage = () => {
     }));
   };
 
+  const filteredTrainees = trainees.filter((t) => {
+    if (!traineeSearch.trim()) return true;
+    const q = traineeSearch.toLowerCase();
+    return (
+      t.name?.toLowerCase().includes(q) ||
+      t.email?.toLowerCase().includes(q) ||
+      t.department?.toLowerCase().includes(q)
+    );
+  });
+
+  const filteredEditTrainees = trainees.filter((t) => {
+    if (!editTraineeSearch.trim()) return true;
+    const q = editTraineeSearch.toLowerCase();
+    return (
+      t.name?.toLowerCase().includes(q) ||
+      t.email?.toLowerCase().includes(q) ||
+      t.department?.toLowerCase().includes(q)
+    );
+  });
+
+  const resetCreateForm = () => {
+    setFormData({
+      name: '',
+      description: '',
+      template: templates.length > 0 ? templates[0]._id : '',
+      channel: templates.length > 0 ? templates[0].channel : 'EMAIL',
+      status: 'DRAFT',
+      targets: [],
+    });
+    setTraineeSearch('');
+  };
+
+  const handleToggleTarget = (traineeId) => {
+    setFormData((prev) => {
+      const exists = prev.targets.includes(traineeId);
+      return {
+        ...prev,
+        targets: exists
+          ? prev.targets.filter((id) => id !== traineeId)
+          : [...prev.targets, traineeId],
+      };
+    });
+  };
+
+  const handleSelectAllTargets = (targetsToSelect) => {
+    setFormData((prev) => {
+      const idsToAdd = targetsToSelect.map((t) => t._id);
+      const updated = Array.from(new Set([...prev.targets, ...idsToAdd]));
+      return { ...prev, targets: updated };
+    });
+  };
+
+  const handleClearTargets = () => {
+    setFormData((prev) => ({ ...prev, targets: [] }));
+  };
+
   const handleCreateCampaign = async (e) => {
     e.preventDefault();
     setError('');
@@ -85,22 +181,72 @@ const CampaignsPage = () => {
     setSubmitting(true);
 
     try {
-      await campaignService.createCampaign(formData);
-      setSuccess('Simulation campaign created successfully!');
-      setShowCreateModal(false);
-      setFormData({
-        name: '',
-        description: '',
-        template: templates.length > 0 ? templates[0]._id : '',
-        channel: templates.length > 0 ? templates[0].channel : 'EMAIL',
+      // Keep status as DRAFT when creating a campaign; do not automatically launch
+      const payload = {
+        ...formData,
         status: 'DRAFT',
-      });
+        targets: Array.isArray(formData.targets) ? formData.targets : [],
+      };
+      await campaignService.createCampaign(payload);
+      setSuccess('Simulation campaign created successfully with status DRAFT!');
+      setShowCreateModal(false);
+      resetCreateForm();
       fetchCampaigns();
     } catch (err) {
       console.error('Failed to create campaign:', err);
       setError(err.response?.data?.message || 'Could not create campaign');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // Edit Targets Modal Handlers
+  const handleOpenEditTargets = (campaign) => {
+    setError('');
+    setSuccess('');
+    setEditingCampaign(campaign);
+    const existingIds = (campaign.targets || []).map((t) =>
+      typeof t === 'string' ? t : t._id
+    );
+    setEditTargets(existingIds);
+    setEditTraineeSearch('');
+  };
+
+  const handleToggleEditTarget = (traineeId) => {
+    setEditTargets((prev) =>
+      prev.includes(traineeId)
+        ? prev.filter((id) => id !== traineeId)
+        : [...prev, traineeId]
+    );
+  };
+
+  const handleSelectAllEditTargets = (targetsToSelect) => {
+    const idsToAdd = targetsToSelect.map((t) => t._id);
+    setEditTargets((prev) => Array.from(new Set([...prev, ...idsToAdd])));
+  };
+
+  const handleClearEditTargets = () => {
+    setEditTargets([]);
+  };
+
+  const handleSaveEditTargets = async (e) => {
+    e.preventDefault();
+    if (!editingCampaign) return;
+    setSavingTargets(true);
+    setError('');
+    setSuccess('');
+    try {
+      await campaignService.updateCampaign(editingCampaign._id, {
+        targets: editTargets,
+      });
+      setSuccess(`Targets updated successfully for campaign "${editingCampaign.name}" (${editTargets.length} trainees enrolled).`);
+      setEditingCampaign(null);
+      fetchCampaigns();
+    } catch (err) {
+      console.error('Failed to update campaign targets:', err);
+      setError(err.response?.data?.message || 'Failed to update campaign targets');
+    } finally {
+      setSavingTargets(false);
     }
   };
 
@@ -252,14 +398,23 @@ const CampaignsPage = () => {
                 </button>
 
                 {canManage && (
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     {c.status === 'DRAFT' && (
-                      <button
-                        onClick={() => handleStatusChange(c._id, 'RUNNING')}
-                        className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold"
-                      >
-                        Launch
-                      </button>
+                      <>
+                        <button
+                          onClick={() => handleOpenEditTargets(c)}
+                          className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-semibold border border-slate-700 transition"
+                          title="Assign or modify targets for this draft campaign"
+                        >
+                          Edit Targets
+                        </button>
+                        <button
+                          onClick={() => handleStatusChange(c._id, 'RUNNING')}
+                          className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition"
+                        >
+                          Launch
+                        </button>
+                      </>
                     )}
                     {c.status === 'RUNNING' && (
                       <button
@@ -361,11 +516,14 @@ const CampaignsPage = () => {
       {/* Create Campaign Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-950 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+          <div className="bg-slate-950 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <h2 className="text-lg font-bold text-white">Create Simulation Campaign</h2>
               <button
-                onClick={() => setShowCreateModal(false)}
+                onClick={() => {
+                  setShowCreateModal(false);
+                  resetCreateForm();
+                }}
                 className="text-slate-400 hover:text-white text-sm"
               >
                 ✕
@@ -427,16 +585,129 @@ const CampaignsPage = () => {
                   <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">
                     Initial Status
                   </label>
-                  <select
-                    value={formData.status}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, status: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white focus:outline-none focus:border-blue-500"
-                  >
-                    <option value="DRAFT">Draft</option>
-                    <option value="RUNNING">Running (Active)</option>
-                    <option value="SCHEDULED">Scheduled</option>
-                  </select>
+                  <input
+                    type="text"
+                    disabled
+                    value="DRAFT (Safe Creation)"
+                    className="w-full px-3 py-2 rounded-lg bg-slate-900/60 border border-slate-800 text-xs text-slate-400 font-medium"
+                  />
                 </div>
+              </div>
+
+              {/* Trainee Target Selection Control */}
+              <div className="space-y-2 pt-1 border-t border-slate-800/80">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                    Assign Trainees ({formData.targets.length} Selected)
+                  </label>
+                  {trainees.length > 0 && (
+                    <div className="flex items-center gap-2 text-[11px]">
+                      <button
+                        type="button"
+                        onClick={() => handleSelectAllTargets(filteredTrainees)}
+                        className="text-blue-400 hover:text-blue-300 font-medium"
+                      >
+                        Select All
+                      </button>
+                      <span className="text-slate-600">|</span>
+                      <button
+                        type="button"
+                        onClick={handleClearTargets}
+                        className="text-slate-400 hover:text-slate-300 font-medium"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {trainees.length > 2 && (
+                  <input
+                    type="text"
+                    value={traineeSearch}
+                    onChange={(e) => setTraineeSearch(e.target.value)}
+                    placeholder="Search trainees by name, email, department..."
+                    className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                  />
+                )}
+
+                {loadingTrainees ? (
+                  <div className="p-4 rounded-lg bg-slate-900/60 border border-slate-800 text-center text-xs text-slate-400">
+                    <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-1"></div>
+                    Loading eligible trainees...
+                  </div>
+                ) : traineesError ? (
+                  <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-xs text-rose-400">
+                    {traineesError}
+                  </div>
+                ) : trainees.length === 0 ? (
+                  <div className="p-4 rounded-lg bg-slate-900/60 border border-slate-800 text-center text-xs text-slate-400">
+                    No active trainees found. Register active trainees to enroll them in campaigns.
+                  </div>
+                ) : filteredTrainees.length === 0 ? (
+                  <div className="p-4 rounded-lg bg-slate-900/60 border border-slate-800 text-center text-xs text-slate-400">
+                    No trainees match &ldquo;{traineeSearch}&rdquo;.
+                  </div>
+                ) : (
+                  <div className="max-h-44 overflow-y-auto space-y-1.5 pr-1 border border-slate-800 rounded-lg p-2 bg-slate-900/40">
+                    {filteredTrainees.map((t) => {
+                      const isSelected = formData.targets.includes(t._id);
+                      return (
+                        <label
+                          key={t._id}
+                          className={`flex items-center justify-between p-2 rounded-lg cursor-pointer border transition text-xs ${
+                            isSelected
+                              ? 'bg-blue-950/40 border-blue-500/60 text-white'
+                              : 'bg-slate-900/70 border-slate-800/80 text-slate-300 hover:bg-slate-800/50'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 overflow-hidden">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => handleToggleTarget(t._id)}
+                              className="rounded border-slate-700 text-blue-600 focus:ring-0 focus:ring-offset-0 bg-slate-800 cursor-pointer"
+                            />
+                            <div className="truncate">
+                              <div className="font-semibold text-slate-200 flex items-center gap-1.5 truncate">
+                                <span>{t.name}</span>
+                                {t.department && (
+                                  <span className="px-1.5 py-0.2 rounded text-[10px] bg-slate-800 text-slate-400 font-normal">
+                                    {t.department}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[11px] text-slate-400 truncate">{t.email}</div>
+                            </div>
+                          </div>
+                          {t.riskLevel && (
+                            <span
+                              className={`text-[10px] font-bold px-1.5 py-0.5 rounded border uppercase shrink-0 ${
+                                t.riskLevel === 'HIGH'
+                                  ? 'bg-rose-950/60 text-rose-400 border-rose-800'
+                                  : t.riskLevel === 'MEDIUM'
+                                  ? 'bg-amber-950/60 text-amber-400 border-amber-800'
+                                  : 'bg-emerald-950/60 text-emerald-400 border-emerald-800'
+                              }`}
+                            >
+                              {t.riskLevel}
+                            </span>
+                          )}
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {formData.targets.length === 0 ? (
+                  <p className="text-[11px] text-amber-400/90">
+                    ⚠️ 0 trainees selected. (Campaigns require at least 1 active trainee before they can be launched.)
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-emerald-400">
+                    ✓ {formData.targets.length} trainee{formData.targets.length > 1 ? 's' : ''} selected as simulation targets.
+                  </p>
+                )}
               </div>
 
               <div>
@@ -444,7 +715,7 @@ const CampaignsPage = () => {
                   Campaign Description (Optional)
                 </label>
                 <textarea
-                  rows={3}
+                  rows={2}
                   value={formData.description}
                   onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
                   placeholder="Simulation objectives and targeted department scope..."
@@ -455,7 +726,10 @@ const CampaignsPage = () => {
               <div className="pt-2 flex items-center justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => setShowCreateModal(false)}
+                  onClick={() => {
+                    setShowCreateModal(false);
+                    resetCreateForm();
+                  }}
                   className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium"
                 >
                   Cancel
@@ -465,7 +739,164 @@ const CampaignsPage = () => {
                   disabled={submitting || !formData.template}
                   className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold disabled:opacity-50"
                 >
-                  {submitting ? 'Creating...' : 'Launch / Save Campaign'}
+                  {submitting ? 'Creating...' : 'Create Campaign (Draft)'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Targets Modal (for DRAFT campaigns) */}
+      {editingCampaign && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-950 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div>
+                <h2 className="text-lg font-bold text-white">Edit Campaign Targets</h2>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Assign or modify target trainees for draft campaign: &ldquo;{editingCampaign.name}&rdquo;
+                </p>
+              </div>
+              <button
+                onClick={() => setEditingCampaign(null)}
+                className="text-slate-400 hover:text-white text-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditTargets} className="space-y-3.5">
+              {/* Trainee Target Selection Control */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                    Assigned Trainees ({editTargets.length} Selected)
+                  </label>
+                  {trainees.length > 0 && (
+                    <div className="flex items-center gap-2 text-[11px]">
+                      <button
+                        type="button"
+                        onClick={() => handleSelectAllEditTargets(filteredEditTrainees)}
+                        className="text-blue-400 hover:text-blue-300 font-medium"
+                      >
+                        Select All
+                      </button>
+                      <span className="text-slate-600">|</span>
+                      <button
+                        type="button"
+                        onClick={handleClearEditTargets}
+                        className="text-slate-400 hover:text-slate-300 font-medium"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {trainees.length > 2 && (
+                  <input
+                    type="text"
+                    value={editTraineeSearch}
+                    onChange={(e) => setEditTraineeSearch(e.target.value)}
+                    placeholder="Search trainees by name, email, department..."
+                    className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                  />
+                )}
+
+                {loadingTrainees ? (
+                  <div className="p-4 rounded-lg bg-slate-900/60 border border-slate-800 text-center text-xs text-slate-400">
+                    <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-1"></div>
+                    Loading eligible trainees...
+                  </div>
+                ) : traineesError ? (
+                  <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-xs text-rose-400">
+                    {traineesError}
+                  </div>
+                ) : trainees.length === 0 ? (
+                  <div className="p-4 rounded-lg bg-slate-900/60 border border-slate-800 text-center text-xs text-slate-400">
+                    No active trainees found. Register active trainees to enroll them.
+                  </div>
+                ) : filteredEditTrainees.length === 0 ? (
+                  <div className="p-4 rounded-lg bg-slate-900/60 border border-slate-800 text-center text-xs text-slate-400">
+                    No trainees match &ldquo;{editTraineeSearch}&rdquo;.
+                  </div>
+                ) : (
+                  <div className="max-h-52 overflow-y-auto space-y-1.5 pr-1 border border-slate-800 rounded-lg p-2 bg-slate-900/40">
+                    {filteredEditTrainees.map((t) => {
+                      const isSelected = editTargets.includes(t._id);
+                      return (
+                        <label
+                          key={t._id}
+                          className={`flex items-center justify-between p-2 rounded-lg cursor-pointer border transition text-xs ${
+                            isSelected
+                              ? 'bg-blue-950/40 border-blue-500/60 text-white'
+                              : 'bg-slate-900/70 border-slate-800/80 text-slate-300 hover:bg-slate-800/50'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 overflow-hidden">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => handleToggleEditTarget(t._id)}
+                              className="rounded border-slate-700 text-blue-600 focus:ring-0 focus:ring-offset-0 bg-slate-800 cursor-pointer"
+                            />
+                            <div className="truncate">
+                              <div className="font-semibold text-slate-200 flex items-center gap-1.5 truncate">
+                                <span>{t.name}</span>
+                                {t.department && (
+                                  <span className="px-1.5 py-0.2 rounded text-[10px] bg-slate-800 text-slate-400 font-normal">
+                                    {t.department}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[11px] text-slate-400 truncate">{t.email}</div>
+                            </div>
+                          </div>
+                          {t.riskLevel && (
+                            <span
+                              className={`text-[10px] font-bold px-1.5 py-0.5 rounded border uppercase shrink-0 ${
+                                t.riskLevel === 'HIGH'
+                                  ? 'bg-rose-950/60 text-rose-400 border-rose-800'
+                                  : t.riskLevel === 'MEDIUM'
+                                  ? 'bg-amber-950/60 text-amber-400 border-amber-800'
+                                  : 'bg-emerald-950/60 text-emerald-400 border-emerald-800'
+                              }`}
+                            >
+                              {t.riskLevel}
+                            </span>
+                          )}
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {editTargets.length === 0 ? (
+                  <p className="text-[11px] text-amber-400/90">
+                    ⚠️ 0 trainees assigned. (At least 1 active trainee must be enrolled before launch.)
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-emerald-400">
+                    ✓ {editTargets.length} trainee{editTargets.length > 1 ? 's' : ''} enrolled in this campaign.
+                  </p>
+                )}
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingCampaign(null)}
+                  className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingTargets}
+                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold disabled:opacity-50"
+                >
+                  {savingTargets ? 'Saving Targets...' : 'Save Targets'}
                 </button>
               </div>
             </form>

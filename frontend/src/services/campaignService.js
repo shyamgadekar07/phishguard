@@ -48,6 +48,14 @@ export const campaignService = {
     const response = await api.get(`/campaigns/${id}/metrics`);
     return response.data;
   },
+
+  /**
+   * Fetch eligible trainees for campaign targeting (reuses authorized /analytics/users endpoint)
+   */
+  async getTrainees() {
+    const response = await api.get('/analytics/users');
+    return response.data;
+  },
 };
 
 export default campaignService;

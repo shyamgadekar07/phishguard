@@ -1,11 +1,14 @@
+import path from 'path';
+import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import app from '../app.js';
 import connectDB from '../config/db.js';
 import User from '../models/User.js';
 
-// Load environment variables
-dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const TEST_PORT = 5099;
 const BASE_URL = `http://localhost:${TEST_PORT}`;
